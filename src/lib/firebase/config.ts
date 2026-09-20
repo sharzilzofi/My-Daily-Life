@@ -21,14 +21,28 @@ const firebaseConfig = {
   appId: savedFirebaseConfig.appId || process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
+export let firebaseConfigError: string | null = null;
+
 // Firebase is a browser-only dependency here. Keeping initialization out of the
 // server render prevents missing client environment variables from breaking prerendering.
-const app: FirebaseApp | null = typeof window === "undefined"
-  ? null
-  : getApps().length
-    ? getApp()
-    : initializeApp(firebaseConfig);
+let app: FirebaseApp | null = null;
+if (typeof window !== "undefined") {
+  try {
+    app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  } catch {
+    firebaseConfigError = "Firebase configuration is missing or invalid. Add the correct web app values in Vercel or configure them on this page.";
+  }
+}
 
-export const auth: Auth | null = app ? getAuth(app) : null;
-export const db: Firestore | null = app ? getFirestore(app) : null;
+export let auth: Auth | null = null;
+export let db: Firestore | null = null;
+if (app) {
+  try {
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } catch {
+    app = null;
+    firebaseConfigError = "Firebase configuration is missing or invalid. Add the correct web app values in Vercel or configure them on this page.";
+  }
+}
 export default app;
