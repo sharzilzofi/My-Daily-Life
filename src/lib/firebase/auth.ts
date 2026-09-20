@@ -49,6 +49,7 @@ function friendlyAuthError(code: string): string {
 
 export async function registerWithEmail(email: string, password: string): Promise<AuthResult> {
   try {
+    if (!auth) return { user: null, error: "Firebase is only available in the browser." };
     const credential = await createUserWithEmailAndPassword(auth, email, password);
     return { user: credential.user, error: null };
   } catch (err: any) {
@@ -58,6 +59,7 @@ export async function registerWithEmail(email: string, password: string): Promis
 
 export async function loginWithEmail(email: string, password: string): Promise<AuthResult> {
   try {
+    if (!auth) return { user: null, error: "Firebase is only available in the browser." };
     const credential = await signInWithEmailAndPassword(auth, email, password);
     return { user: credential.user, error: null };
   } catch (err: any) {
@@ -66,5 +68,6 @@ export async function loginWithEmail(email: string, password: string): Promise<A
 }
 
 export async function logout(): Promise<void> {
+  if (!auth) return;
   await firebaseSignOut(auth);
 }

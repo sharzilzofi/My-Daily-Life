@@ -21,9 +21,14 @@ const firebaseConfig = {
   appId: savedFirebaseConfig.appId || process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Guard against re-initializing the app on every hot-reload / re-render.
-const app: FirebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
+// Firebase is a browser-only dependency here. Keeping initialization out of the
+// server render prevents missing client environment variables from breaking prerendering.
+const app: FirebaseApp | null = typeof window === "undefined"
+  ? null
+  : getApps().length
+    ? getApp()
+    : initializeApp(firebaseConfig);
 
-export const auth: Auth = getAuth(app);
-export const db: Firestore = getFirestore(app);
+export const auth: Auth | null = app ? getAuth(app) : null;
+export const db: Firestore | null = app ? getFirestore(app) : null;
 export default app;

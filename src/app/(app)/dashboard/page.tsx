@@ -97,7 +97,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !db) return;
+    const firestore = db;
     const names = ["nutrition", "transactions", "workouts", "timeEntries", "dailyLogs"];
     const refreshLocal = () => {
       try {
@@ -115,7 +116,7 @@ export default function DashboardPage() {
         // Ignore malformed optional local data and keep Firestore records visible.
       }
     };
-    const unsubscribes = names.map((name) => onSnapshot(collection(db, "users", user.uid, name), (snapshot) => {
+    const unsubscribes = names.map((name) => onSnapshot(collection(firestore, "users", user.uid, name), (snapshot) => {
       setRecords((current) => ({ ...current, [name]: snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) }));
       setLoading(false);
     }, () => setLoading(false)));
@@ -149,7 +150,7 @@ export default function DashboardPage() {
   const dailyLog = data.dailyLogs[0];
   const latest = [...records.nutrition.map((item) => ({ ...item, kind: "Food", label: text(item, ["name", "food"]), when: recordDate(item) })), ...records.transactions.map((item) => ({ ...item, kind: "Transaction", label: text(item, ["description", "merchant", "category"]), when: recordDate(item) })), ...records.workouts.map((item) => ({ ...item, kind: "Workout", label: text(item, ["name", "workout"]), when: recordDate(item) })), ...records.timeEntries.map((item) => ({ ...item, kind: "Time", label: text(item, ["name", "activity", "category"]), when: recordDate(item) })), ...records.dailyLogs.map((item) => ({ ...item, kind: "Daily log", label: "Daily check-in", when: recordDate(item) }))].filter((item) => item.when).sort((a, b) => b.when!.getTime() - a.when!.getTime()).slice(0, 8);
   const chartValues = (collectionName: string, keys: string[]) => chartDays.map((day) => dayRecords(collectionName, day).reduce((sum, item) => sum + number(item, keys), 0));
-  const save = async (form: Record<string, any>) => { if (!user || !action) return; const collectionName = action === "food" ? "nutrition" : action === "log" ? "dailyLogs" : action === "workout" || action === "activity" ? "workouts" : "transactions"; await addDoc(collection(db, "users", user.uid, collectionName), { ...form, type: action === "expense" ? "expense" : action === "income" ? "income" : action === "transfer" ? "transfer" : action, createdAt: serverTimestamp() }); };
+  const save = async (form: Record<string, any>) => { if (!user || !action || !db) return; const collectionName = action === "food" ? "nutrition" : action === "log" ? "dailyLogs" : action === "workout" || action === "activity" ? "workouts" : "transactions"; await addDoc(collection(db, "users", user.uid, collectionName), { ...form, type: action === "expense" ? "expense" : action === "income" ? "income" : action === "transfer" ? "transfer" : action, createdAt: serverTimestamp() }); };
   const rangeLabel = range === "today" ? "Today" : range === "yesterday" ? "Yesterday" : range === "week" ? "This week" : range === "month" ? "This month" : customDate;
 
   return <div className="mx-auto max-w-[1500px] space-y-6 text-[#2f2925]">
