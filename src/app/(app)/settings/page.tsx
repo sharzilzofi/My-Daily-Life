@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { readActiveUserStorage, writeActiveUserStorage, removeActiveUserStorage } from "@/lib/userStorage";
 
 type Theme = "light" | "dark" | "system";
 type Settings = {
@@ -44,12 +46,8 @@ const emptyApi: ApiConfig = {
 };
 
 const read = <T,>(key: string, fallback: T): T => {
-  try {
-    const value = JSON.parse(localStorage.getItem(key) || "{}");
-    return { ...(fallback as object), ...value } as T;
-  } catch {
-    return fallback;
-  }
+  const value = readActiveUserStorage(key, {} as T);
+  return { ...(fallback as object), ...(value as object) } as T;
 };
 
 function Button({ children, onClick, danger = false }: { children: React.ReactNode; onClick?: () => void; danger?: boolean }) {
@@ -120,6 +118,7 @@ function ApiIntegrations({ api, setApi, emit }: { api: ApiConfig; setApi: (value
 }
 
 export default function SettingsPage() {
+  const { user } = useAuth();
   const [settings, setSettings] = useState(defaults);
   const [api, setApi] = useState<ApiConfig>(emptyApi);
   const [tab, setTab] = useState("profile");
@@ -130,16 +129,16 @@ export default function SettingsPage() {
   const [newActivity, setNewActivity] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
   const refresh = () => { setSettings(read(SETTINGS_KEY, defaults)); setApi(read(API_KEY, emptyApi)); setFinance(read("personal-life-finance-v1", { accounts: [], categories: [] })); setNutrition(read("personal-life-nutrition-v1", { targets: {} })); setTime(read("personal-life-time-v1", { custom: [] })); };
-  useEffect(() => { refresh(); window.addEventListener("life-data-updated", refresh); return () => window.removeEventListener("life-data-updated", refresh); }, []);
+  useEffect(() => { refresh(); window.addEventListener("life-data-updated", refresh); return () => window.removeEventListener("life-data-updated", refresh); }, [user]);
   const emit = () => window.dispatchEvent(new Event("life-data-updated"));
-  const saveSettings = (next: Settings) => { setSettings(next); localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); emit(); };
-  const saveNutrition = (targets: any) => { const next = { ...nutrition, targets }; setNutrition(next); localStorage.setItem("personal-life-nutrition-v1", JSON.stringify(next)); emit(); };
-  const saveFinance = (next: any) => { setFinance(next); localStorage.setItem("personal-life-finance-v1", JSON.stringify(next)); emit(); };
-  const saveTime = (next: any) => { setTime(next); localStorage.setItem("personal-life-time-v1", JSON.stringify(next)); emit(); };
+  const saveSettings = (next: Settings) => { setSettings(next); writeActiveUserStorage(SETTINGS_KEY, next); emit(); };
+  const saveNutrition = (targets: any) => { const next = { ...nutrition, targets }; setNutrition(next); writeActiveUserStorage("personal-life-nutrition-v1", next); emit(); };
+  const saveFinance = (next: any) => { setFinance(next); writeActiveUserStorage("personal-life-finance-v1", next); emit(); };
+  const saveTime = (next: any) => { setTime(next); writeActiveUserStorage("personal-life-time-v1", next); emit(); };
   useEffect(() => { const root = document.documentElement; root.classList.toggle("dark", settings.theme === "dark" || (settings.theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)); }, [settings.theme]);
   const exportData = () => { const data: Record<string, any> = { settings, api }; DATA_KEYS.forEach((key) => { data[key] = read(key, {}); }); const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `personal-life-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(link.href); };
   const importData = (file: File) => { const reader = new FileReader(); reader.onload = () => { try { const data = JSON.parse(String(reader.result)); if (!data || typeof data !== "object" || !data.settings || !data.api || typeof data.api !== "object") throw new Error("Invalid backup"); if (!confirm("Replace current application data with this backup?")) return; localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...defaults, ...data.settings })); localStorage.setItem(API_KEY, JSON.stringify({ ...emptyApi, ...data.api, firebase: { ...emptyApi.firebase, ...(data.api.firebase || {}) } })); DATA_KEYS.forEach((key) => { if (data[key] && typeof data[key] === "object") localStorage.setItem(key, JSON.stringify(data[key])); }); refresh(); emit(); alert("Data imported successfully."); } catch { alert("This file is not a valid Personal Life Dashboard backup."); } }; reader.readAsText(file); };
-  const clear = (key: string, label: string) => { if (!confirm(`Delete all ${label}? This cannot be undone.`)) return; localStorage.removeItem(key); emit(); refresh(); };
+  const clear = (key: string, label: string) => { if (!confirm(`Delete all ${label}? This cannot be undone.`)) return; removeActiveUserStorage(key); emit(); refresh(); };
 
   const tabs = [["profile", "Profile"], ["nutrition", "Nutrition"], ["finance", "Finance"], ["workout", "Workout"], ["time", "Time"], ["appearance", "Appearance"], ["api", "API & Integrations"], ["data", "Data"]];
   return <div className="mx-auto max-w-[1200px] space-y-6 text-[#2f2925]"><div><p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#e76f51]">Settings</p><h1 className="mt-1 text-3xl font-semibold">Make the system yours.</h1><p className="mt-2 text-sm text-[#887a70]">Preferences, integrations, and data controls are saved on this device.</p></div><div className="flex flex-wrap gap-2">{tabs.map(([value, label]) => <button key={value} onClick={() => setTab(value)} className={`rounded-lg px-3 py-2 text-sm ${tab === value ? "bg-[#264653] text-white" : "border border-[#ddcfc1] bg-[#fffdf9]"}`}>{label}</button>)}</div><section className="rounded-2xl border border-[#eadfd3] bg-[#fffdf9] p-5">

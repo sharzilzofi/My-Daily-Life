@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { readUserStorage, writeUserStorage } from "@/lib/userStorage";
 
 type Account = { id: string; name: string; type: string; starting: number; active: boolean; note?: string };
 type Transaction = { id: string; type: "income" | "expense" | "transfer"; amount: number; source?: string; category: string; account?: string; from?: string; to?: string; date: string; time: string; note: string };
@@ -15,14 +17,15 @@ const defaultAccounts: Account[] = [
 const today = () => new Date().toISOString().slice(0, 10);
 const id = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const n = (value: string | number) => Number.isFinite(Number(value)) ? Number(value) : 0;
-const money = (value: number) => { let currency = "BDT"; try { currency = JSON.parse(localStorage.getItem("personal-life-settings-v1") || "{}").currency || "BDT"; } catch {} return `${currency === "USD" ? "$" : currency === "EUR" ? "€" : currency === "INR" ? "₹" : "৳"}${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`; };
-const read = (): Store => { try { const raw = localStorage.getItem(KEY); if (!raw) return { accounts: defaultAccounts, transactions: [], categories }; const value = JSON.parse(raw); const transactions = Array.isArray(value.transactions) ? value.transactions : []; const accounts = Array.isArray(value.accounts) ? value.accounts : []; return { accounts: accounts.length || transactions.length ? accounts : defaultAccounts, transactions, categories: Array.isArray(value.categories) && value.categories.length ? value.categories : categories }; } catch { return { accounts: defaultAccounts, transactions: [], categories }; } };
-const write = (value: Store) => { localStorage.setItem(KEY, JSON.stringify(value)); window.dispatchEvent(new Event("life-data-updated")); };
+const money = (value: number, currency = "BDT") => `${currency === "USD" ? "$" : currency === "EUR" ? "€" : currency === "INR" ? "₹" : "৳"}${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+const read = (userId: string): Store => { const value = readUserStorage(KEY, userId, {} as Store); const transactions = Array.isArray(value.transactions) ? value.transactions : []; const accounts = Array.isArray(value.accounts) ? value.accounts : []; return { accounts: accounts.length || transactions.length ? accounts : defaultAccounts, transactions, categories: Array.isArray(value.categories) && value.categories.length ? value.categories : categories }; };
+const write = (userId: string, value: Store) => writeUserStorage(KEY, userId, value);
 
 function Input({ label, value, onChange, type = "text", required = false }: { label: string; value: string | number; onChange: (value: string) => void; type?: string; required?: boolean }) { return <label className="block"><span className="mb-1 block text-xs font-medium text-[#6e625a]">{label}</span><input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border border-[#ddcfc1] bg-white px-3 py-2 text-sm outline-none focus:border-[#e76f51]" /></label>; }
 function Chart({ values, labels, color }: { values: number[]; labels: string[]; color: string }) { const max = Math.max(...values, 1); return <div className="flex h-36 items-end gap-2 border-b border-l border-[#eadfd3] px-2 pt-3">{values.map((value, index) => <div key={index} className="flex h-full flex-1 flex-col items-center justify-end gap-1"><span className="text-[10px] text-[#887a70]">{value ? Math.round(value) : ""}</span><div className="w-full max-w-8 rounded-t" style={{ height: `${Math.max(value ? 5 : 1, value / max * 100)}%`, backgroundColor: value ? color : "#eee4da" }} /><span className="text-[10px] text-[#887a70]">{labels[index]}</span></div>)}</div>; }
 
 export default function FinancePage() {
+  const { user } = useAuth();
   const [store, setStore] = useState<Store>({ accounts: [], transactions: [], categories });
   const [tab, setTab] = useState<"overview" | "accounts" | "transactions">("overview");
   const [formType, setFormType] = useState<"income" | "expense" | "transfer">("expense");
@@ -30,8 +33,8 @@ export default function FinancePage() {
   const [accountForm, setAccountForm] = useState({ name: "", type: "Cash", starting: 0, active: true });
   const [form, setForm] = useState({ amount: 0, source: "", category: "Other", account: "", from: "", to: "", date: today(), time: "", note: "" });
   const [search, setSearch] = useState(""); const [filter, setFilter] = useState("All"); const [period, setPeriod] = useState("today"); const [customDate, setCustomDate] = useState(today());
-  useEffect(() => { const initial = read(); setStore(initial); if (!localStorage.getItem(KEY)) write(initial); const refresh = () => setStore(read()); window.addEventListener("life-data-updated", refresh); return () => window.removeEventListener("life-data-updated", refresh); }, []);
-  const save = (next: Store) => { setStore(next); write(next); };
+  useEffect(() => { if (!user) return; const initial = read(user.uid); setStore(initial); if (!localStorage.getItem(`${KEY}:${user.uid}`)) write(user.uid, initial); const refresh = () => setStore(read(user.uid)); window.addEventListener("life-data-updated", refresh); return () => window.removeEventListener("life-data-updated", refresh); }, [user]);
+  const save = (next: Store) => { if (!user) return; setStore(next); write(user.uid, next); };
   const balance = (accountId: string) => { const account = store.accounts.find((item) => item.id === accountId); return (account?.starting || 0) + store.transactions.reduce((total, item) => { if (item.type === "income" && item.account === accountId) return total + item.amount; if (item.type === "expense" && item.account === accountId) return total - item.amount; if (item.type === "transfer" && item.from === accountId) return total - item.amount; if (item.type === "transfer" && item.to === accountId) return total + item.amount; return total; }, 0); };
   const now = new Date(); const month = now.toISOString().slice(0, 7);
   const inPeriod = (item: Transaction) => { if (period === "custom") return item.date === customDate; if (period === "today") return item.date === today(); if (period === "month") return item.date.startsWith(month); const date = new Date(`${item.date}T00:00:00`); return date >= new Date(now.getTime() - 6 * 86400000); };

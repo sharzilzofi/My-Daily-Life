@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { readUserStorage, writeUserStorage } from "@/lib/userStorage";
 
 type Exercise = { id: string; name: string; primary: string; secondary: string; equipment: string; type: string; notes: string };
 type SetEntry = { id: string; weight: number; reps: number; rest: number; notes: string };
@@ -12,8 +14,8 @@ const blankExercise = { name: "", primary: "", secondary: "", equipment: "", typ
 const today = () => new Date().toISOString().slice(0, 10);
 const id = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const n = (value: string | number) => Number.isFinite(Number(value)) ? Number(value) : 0;
-const read = (): Store => { try { const value = JSON.parse(localStorage.getItem(KEY) || "{}"); return { exercises: value.exercises || [], workouts: value.workouts || [] }; } catch { return { exercises: [], workouts: [] }; } };
-const write = (value: Store) => { localStorage.setItem(KEY, JSON.stringify(value)); window.dispatchEvent(new Event("life-data-updated")); };
+const read = (userId: string): Store => { const value = readUserStorage(KEY, userId, {} as Store); return { exercises: value.exercises || [], workouts: value.workouts || [] }; };
+const write = (userId: string, value: Store) => writeUserStorage(KEY, userId, value);
 const fmt = (seconds: number) => [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60].map((value) => String(value).padStart(2, "0")).join(":");
 const volume = (sets: SetEntry[]) => sets.reduce((total, set) => total + set.weight * set.reps, 0);
 
@@ -21,13 +23,14 @@ function Input({ label, value, onChange, type = "text" }: { label: string; value
 function Chart({ values, color }: { values: number[]; color: string }) { const max = Math.max(...values, 1); return <div className="flex h-32 items-end gap-2 border-b border-l border-[#eadfd3] px-2 pt-3">{values.map((value, index) => <div key={index} className="flex h-full flex-1 flex-col items-center justify-end"><div className="w-full max-w-9 rounded-t" style={{ height: `${Math.max(value ? 5 : 1, value / max * 100)}%`, backgroundColor: value ? color : "#eee4da" }} /><span className="mt-1 text-[10px] text-[#887a70]">{index + 1}</span></div>)}</div>; }
 
 export default function WorkoutPage() {
+  const { user } = useAuth();
   const [store, setStore] = useState<Store>({ exercises: [], workouts: [] }); const [tab, setTab] = useState<"start" | "database" | "history" | "progress">("start");
   const [exercise, setExercise] = useState(blankExercise); const [editingExercise, setEditingExercise] = useState<string | null>(null); const [search, setSearch] = useState("");
   const [name, setName] = useState(""); const [date, setDate] = useState(today()); const [notes, setNotes] = useState(""); const [editingWorkout, setEditingWorkout] = useState<string | null>(null); const [activeExercises, setActiveExercises] = useState<{ exerciseId: string; name: string; sets: SetEntry[] }[]>([]); const [started, setStarted] = useState<Date | null>(null); const [elapsed, setElapsed] = useState(0); const [running, setRunning] = useState(false); const [rest, setRest] = useState(0); const [restRunning, setRestRunning] = useState(false); const [restPaused, setRestPaused] = useState(false);
-  useEffect(() => { setStore(read()); const refresh = () => setStore(read()); window.addEventListener("life-data-updated", refresh); return () => window.removeEventListener("life-data-updated", refresh); }, []);
+  useEffect(() => { if (!user) return; setStore(read(user.uid)); const refresh = () => setStore(read(user.uid)); window.addEventListener("life-data-updated", refresh); return () => window.removeEventListener("life-data-updated", refresh); }, [user]);
   useEffect(() => { if (!running || !started) return; const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - started.getTime()) / 1000)), 1000); return () => window.clearInterval(timer); }, [running, started]);
   useEffect(() => { if (!restRunning || restPaused) return; const timer = window.setInterval(() => setRest((value) => { if (value <= 1) { setRestRunning(false); return 0; } return value - 1; }), 1000); return () => window.clearInterval(timer); }, [restRunning, restPaused]);
-  const save = (next: Store) => { setStore(next); write(next); };
+  const save = (next: Store) => { if (!user) return; setStore(next); write(user.uid, next); };
   const addExercise = (event: FormEvent) => { event.preventDefault(); const value: Exercise = { ...exercise, id: editingExercise || id() }; save({ ...store, exercises: editingExercise ? store.exercises.map((item) => item.id === editingExercise ? value : item) : [...store.exercises, value] }); setExercise(blankExercise); setEditingExercise(null); };
   const addToWorkout = (exerciseId: string) => { const item = store.exercises.find((value) => value.id === exerciseId); if (item && !activeExercises.some((value) => value.exerciseId === exerciseId)) setActiveExercises([...activeExercises, { exerciseId, name: item.name, sets: [] }]); };
   const addSet = (exerciseId: string) => setActiveExercises((items) => items.map((item) => item.exerciseId === exerciseId ? { ...item, sets: [...item.sets, { id: id(), weight: 0, reps: 0, rest: 60, notes: "" }] } : item));

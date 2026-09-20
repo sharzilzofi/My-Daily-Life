@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { readActiveUserStorage } from "@/lib/userStorage";
 
 type Item = Record<string, any>;
 const money = (value: number) => `৳${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -12,9 +14,10 @@ function Bars({ values: data, color }: { values: number[]; color: string }) {
 }
 
 export default function AnalyticsPage() {
+  const { user } = useAuth();
   const [nutrition, setNutrition] = useState<Item[]>([]); const [transactions, setTransactions] = useState<Item[]>([]);
-  const refresh = () => { try { setNutrition(JSON.parse(localStorage.getItem("personal-life-nutrition-v1") || "{}").logs || []); setTransactions(JSON.parse(localStorage.getItem("personal-life-finance-v1") || "{}").transactions || []); } catch { setNutrition([]); setTransactions([]); } };
-  useEffect(() => { refresh(); window.addEventListener("life-data-updated", refresh); return () => window.removeEventListener("life-data-updated", refresh); }, []);
+  const refresh = () => { if (!user) { setNutrition([]); setTransactions([]); return; } const nutritionStore = readActiveUserStorage<{ logs?: Item[] }>("personal-life-nutrition-v1", {}); const financeStore = readActiveUserStorage<{ transactions?: Item[] }>("personal-life-finance-v1", {}); setNutrition(nutritionStore.logs || []); setTransactions(financeStore.transactions || []); };
+  useEffect(() => { refresh(); window.addEventListener("life-data-updated", refresh); return () => window.removeEventListener("life-data-updated", refresh); }, [user]);
   const days = Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setDate(date.getDate() - (6 - index)); return date.toISOString().slice(0, 10); });
   const daily = (items: Item[], field: string) => days.map((date) => values(items.filter((item) => item.date === date), field));
   const expenses = transactions.filter((item) => item.type === "expense"); const income = transactions.filter((item) => item.type === "income");

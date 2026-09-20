@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { readUserStorage, writeUserStorage } from "@/lib/userStorage";
 
 type Food = { id: string; name: string; category: string; base: number; unit: string; calories: number; protein: number; carbs: number; fat: number; fiber: number; notes: string };
 type Log = { id: string; foodId: string; foodName: string; quantity: number; unit: string; meal: string; date: string; time: string; notes: string; calories: number; protein: number; carbs: number; fat: number; fiber: number; category: string };
@@ -14,8 +16,9 @@ const today = () => new Date().toISOString().slice(0, 10);
 const blankLog = { foodId: "", quantity: 100, unit: "g", meal: "Breakfast", date: today(), time: "", notes: "" };
 const n = (value: string | number) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const id = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const read = (): Store => { try { const value = JSON.parse(localStorage.getItem(KEY) || "{}"); return { foods: value.foods || [], logs: value.logs || [], targets: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, ...(value.targets || {}) } }; } catch { return { foods: [], logs: [], targets: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 } }; } };
-const write = (value: Store) => { localStorage.setItem(KEY, JSON.stringify(value)); window.dispatchEvent(new Event("life-data-updated")); };
+const emptyStore = (): Store => ({ foods: [], logs: [], targets: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 } });
+const read = (userId: string): Store => { const value = readUserStorage(KEY, userId, {} as Store); return { foods: value.foods || [], logs: value.logs || [], targets: { ...emptyStore().targets, ...(value.targets || {}) } }; };
+const write = (userId: string, value: Store) => writeUserStorage(KEY, userId, value);
 const scaled = (food: Food, quantity: number) => { const ratio = food.base ? quantity / food.base : 0; return { calories: food.calories * ratio, protein: food.protein * ratio, carbs: food.carbs * ratio, fat: food.fat * ratio, fiber: food.fiber * ratio }; };
 const sum = (logs: Log[], field: keyof Pick<Log, "calories" | "protein" | "carbs" | "fat" | "fiber">) => logs.reduce((total, log) => total + n(log[field]), 0);
 
@@ -25,13 +28,14 @@ function Progress({ label, value, target, unit }: { label: string; value: number
 function Chart({ logs, field, color }: { logs: Log[]; field: keyof Pick<Log, "calories" | "protein" | "carbs" | "fat">; color: string }) { const dates = Array.from({ length: 7 }, (_, offset) => { const date = new Date(); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - (6 - offset)); return date; }); const values = dates.map((date) => logs.filter((log) => new Date(`${log.date}T00:00:00`).getTime() === date.getTime()).reduce((total, log) => total + n(log[field]), 0)); const max = Math.max(...values, 1); return <div className="flex h-32 items-end gap-2 border-b border-l border-[#eadfd3] px-2 pt-3">{values.map((value, index) => <div key={index} className="flex h-full flex-1 flex-col items-center justify-end gap-1"><span className="text-[10px] text-[#887a70]">{value ? Math.round(value) : ""}</span><div className="w-full max-w-8 rounded-t" style={{ height: `${Math.max(value ? 5 : 1, value / max * 100)}%`, backgroundColor: value ? color : "#eee4da" }} /><span className="text-[10px] text-[#887a70]">{dates[index].toLocaleDateString(undefined, { weekday: "short" })}</span></div>)}</div>; }
 
 export default function NutritionPage() {
-  const [store, setStore] = useState<Store>({ foods: [], logs: [], targets: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 } });
+  const { user } = useAuth();
+  const [store, setStore] = useState<Store>(emptyStore());
   const [tab, setTab] = useState<"overview" | "foods" | "log">("overview");
   const [food, setFood] = useState(blankFood); const [foodEdit, setFoodEdit] = useState<string | null>(null);
   const [log, setLog] = useState(blankLog); const [logEdit, setLogEdit] = useState<string | null>(null);
   const [history, setHistory] = useState("today"); const [customDate, setCustomDate] = useState(today()); const [search, setSearch] = useState(""); const [category, setCategory] = useState("All"); const [meal, setMeal] = useState("All");
-  useEffect(() => { setStore(read()); const refresh = () => setStore(read()); window.addEventListener("life-data-updated", refresh); return () => window.removeEventListener("life-data-updated", refresh); }, []);
-  const save = (next: Store) => { setStore(next); write(next); };
+  useEffect(() => { if (!user) return; setStore(read(user.uid)); const refresh = () => setStore(read(user.uid)); window.addEventListener("life-data-updated", refresh); return () => window.removeEventListener("life-data-updated", refresh); }, [user]);
+  const save = (next: Store) => { if (!user) return; setStore(next); write(user.uid, next); };
   const shown = useMemo(() => { const now = new Date(); now.setHours(0, 0, 0, 0); let start = now; let end = new Date(now.getTime() + 86400000); if (history === "yesterday") { start = new Date(now.getTime() - 86400000); end = now; } if (history === "7") start = new Date(now.getTime() - 6 * 86400000); if (history === "30") start = new Date(now.getTime() - 29 * 86400000); if (history === "custom") { start = new Date(`${customDate}T00:00:00`); end = new Date(start.getTime() + 86400000); } return store.logs.filter((item) => { const date = new Date(`${item.date}T00:00:00`); return date >= start && date < end && (meal === "All" || item.meal === meal) && (category === "All" || item.category === category) && (!search || item.foodName.toLowerCase().includes(search.toLowerCase())); }); }, [store.logs, history, customDate, meal, category, search]);
   const totals = { calories: sum(shown, "calories"), protein: sum(shown, "protein"), carbs: sum(shown, "carbs"), fat: sum(shown, "fat"), fiber: sum(shown, "fiber") };
   const selected = store.foods.find((item) => item.id === log.foodId); const categories = ["All", ...Array.from(new Set(store.foods.map((item) => item.category).filter(Boolean)))];

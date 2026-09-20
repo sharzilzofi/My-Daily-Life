@@ -4,6 +4,7 @@ import { addDoc, collection, onSnapshot, serverTimestamp } from "firebase/firest
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/context/AuthContext";
+import { readUserStorage } from "@/lib/userStorage";
 
 type RecordData = Record<string, any> & { id: string };
 type Range = "today" | "yesterday" | "week" | "month" | "custom";
@@ -102,10 +103,10 @@ export default function DashboardPage() {
     const names = ["nutrition", "transactions", "workouts", "timeEntries", "dailyLogs"];
     const refreshLocal = () => {
       try {
-        const nutrition = JSON.parse(localStorage.getItem("personal-life-nutrition-v1") || "{}");
-        const finance = JSON.parse(localStorage.getItem("personal-life-finance-v1") || "{}");
-        const workout = JSON.parse(localStorage.getItem("personal-life-workout-v1") || "{}");
-        const time = JSON.parse(localStorage.getItem("personal-life-time-v1") || "{}");
+        const nutrition = readUserStorage<Record<string, any>>("personal-life-nutrition-v1", user.uid, {});
+        const finance = readUserStorage<Record<string, any>>("personal-life-finance-v1", user.uid, {});
+        const workout = readUserStorage<Record<string, any>>("personal-life-workout-v1", user.uid, {});
+        const time = readUserStorage<Record<string, any>>("personal-life-time-v1", user.uid, {});
         const accounts = Object.fromEntries((finance.accounts || []).map((account: RecordData) => [account.id, account.name]));
         const localNutrition = (nutrition.logs || []).map((item: RecordData) => ({ ...item, date: item.date, calories: item.calories, protein: item.protein, carbs: item.carbs, fat: item.fat, fiber: item.fiber }));
         const localTransactions = (finance.transactions || []).map((item: RecordData) => ({ ...item, account: accounts[item.account] || item.account, fromAccount: accounts[item.from] || item.from, toAccount: accounts[item.to] || item.to }));

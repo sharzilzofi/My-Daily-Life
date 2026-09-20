@@ -17,10 +17,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!auth) {
+      sessionStorage.removeItem("personal-life-active-user");
       setLoading(false);
       return;
     }
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) sessionStorage.setItem("personal-life-active-user", firebaseUser.uid);
+      else sessionStorage.removeItem("personal-life-active-user");
       setUser(firebaseUser);
       setLoading(false);
     });

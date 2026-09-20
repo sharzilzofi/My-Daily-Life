@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { readUserStorage, writeUserStorage } from "@/lib/userStorage";
 
 type Entry = { id: string; activity: string; start: string; end: string; duration: number; date: string; notes: string };
 type Store = { entries: Entry[]; custom: string[] };
@@ -8,8 +10,8 @@ const KEY = "personal-life-time-v1";
 const defaults = ["Study", "Work", "Business", "Coding", "Gym", "Sleep", "Food", "Travel", "Phone", "Entertainment", "Reading", "Free Time", "Personal", "Other"];
 const today = () => new Date().toISOString().slice(0, 10);
 const id = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const read = (): Store => { try { const value = JSON.parse(localStorage.getItem(KEY) || "{}"); return { entries: value.entries || [], custom: value.custom || [] }; } catch { return { entries: [], custom: [] }; } };
-const write = (value: Store) => { localStorage.setItem(KEY, JSON.stringify(value)); window.dispatchEvent(new Event("life-data-updated")); };
+const read = (userId: string): Store => { const value = readUserStorage(KEY, userId, {} as Store); return { entries: value.entries || [], custom: value.custom || [] }; };
+const write = (userId: string, value: Store) => writeUserStorage(KEY, userId, value);
 const secondsBetween = (start: string, end: string) => Math.max(0, Math.floor((new Date(end).getTime() - new Date(start).getTime()) / 1000));
 const fmt = (seconds: number) => [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60].map((value) => String(value).padStart(2, "0")).join(":");
 const dateTime = (date: string, time: string) => new Date(`${date}T${time || "00:00"}`).toISOString();
@@ -18,10 +20,11 @@ function Input({ label, value, onChange, type = "text" }: { label: string; value
 function Bars({ values, labels, color }: { values: number[]; labels: string[]; color: string }) { const max = Math.max(...values, 1); return <div className="flex h-32 items-end gap-2 border-b border-l border-[#eadfd3] px-2 pt-3">{values.map((value, index) => <div key={index} className="flex h-full flex-1 flex-col items-center justify-end"><div className="w-full max-w-9 rounded-t" style={{ height: `${Math.max(value ? 5 : 1, value / max * 100)}%`, backgroundColor: value ? color : "#eee4da" }} /><span className="mt-1 text-[10px] text-[#887a70]">{labels[index]}</span></div>)}</div>; }
 
 export default function TimePage() {
+  const { user } = useAuth();
   const [store, setStore] = useState<Store>({ entries: [], custom: [] }); const [tab, setTab] = useState<"overview" | "timer" | "entries">("overview"); const [activity, setActivity] = useState("Study"); const [newActivity, setNewActivity] = useState(""); const [running, setRunning] = useState(false); const [started, setStarted] = useState<Date | null>(null); const [elapsed, setElapsed] = useState(0); const [form, setForm] = useState({ activity: "Study", date: today(), start: "09:00", end: "10:00", notes: "" }); const [editing, setEditing] = useState<string | null>(null); const [range, setRange] = useState("today"); const [customStart, setCustomStart] = useState(today()); const [customEnd, setCustomEnd] = useState(today());
-  useEffect(() => { setStore(read()); const refresh = () => setStore(read()); window.addEventListener("life-data-updated", refresh); return () => window.removeEventListener("life-data-updated", refresh); }, []);
+  useEffect(() => { if (!user) return; setStore(read(user.uid)); const refresh = () => setStore(read(user.uid)); window.addEventListener("life-data-updated", refresh); return () => window.removeEventListener("life-data-updated", refresh); }, [user]);
   useEffect(() => { if (!running || !started) return; const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - started.getTime()) / 1000)), 1000); return () => window.clearInterval(timer); }, [running, started]);
-  const save = (next: Store) => { setStore(next); write(next); };
+  const save = (next: Store) => { if (!user) return; setStore(next); write(user.uid, next); };
   const activities = [...defaults, ...store.custom.filter((item) => !defaults.includes(item))];
   const selectedEntries = useMemo(() => { const now = new Date(); now.setHours(0, 0, 0, 0); let start = now; let end = new Date(now.getTime() + 86400000); if (range === "yesterday") { start = new Date(now.getTime() - 86400000); end = now; } if (range === "7") start = new Date(now.getTime() - 6 * 86400000); if (range === "30") start = new Date(now.getTime() - 29 * 86400000); if (range === "custom") { start = new Date(`${customStart}T00:00:00`); end = new Date(`${customEnd}T23:59:59`); } return store.entries.filter((item) => { const value = new Date(`${item.date}T00:00:00`); return value >= start && value <= end; }); }, [store.entries, range, customStart, customEnd]);
   const total = selectedEntries.reduce((sum, item) => sum + item.duration, 0); const unique = useMemo(() => { const intervals = selectedEntries.map((item) => [new Date(item.start).getTime(), new Date(item.end).getTime()] as [number, number]).sort((a, b) => a[0] - b[0]); let covered = 0; let current: [number, number] | null = null; intervals.forEach(([start, end]) => { if (!current) current = [start, end]; else if (start <= current[1]) current[1] = Math.max(current[1], end); else { covered += current[1] - current[0]; current = [start, end]; } }); if (current) covered += current[1] - current[0]; return Math.floor(covered / 1000); }, [selectedEntries]);
