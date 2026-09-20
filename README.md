@@ -47,6 +47,23 @@ built in the phases that follow.
    Visit http://localhost:3000 — you should land on `/login`. Register an account,
    and you'll be redirected into the dashboard shell with the sidebar and placeholder pages.
 
+## Deploy to Vercel
+
+Import this repository into Vercel and keep the default framework preset and build command.
+Before deploying, add these six environment variables in **Project Settings → Environment
+Variables** for the Production environment (and Preview if needed):
+
+- `NEXT_PUBLIC_FIREBASE_API_KEY`
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
+- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
+- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
+- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+- `NEXT_PUBLIC_FIREBASE_APP_ID`
+
+Use the values from the Firebase web app configuration, then redeploy. Firebase web config
+values are intended for client-side use; access control is provided by Firebase Authentication
+and Firestore Security Rules.
+
 ## Next phases
 
 See the full architecture document (`personal-life-dashboard-plan.md`, shared earlier)
