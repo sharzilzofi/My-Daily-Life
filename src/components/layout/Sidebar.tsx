@@ -9,7 +9,6 @@ const NAV_ITEMS = [
   { href: "/finance", label: "Finance" },
   { href: "/workout", label: "Workout" },
   { href: "/time", label: "Time Tracking" },
-  { href: "/daily-log", label: "History" },
   { href: "/analytics", label: "Analytics" },
   { href: "/settings", label: "Settings" },
 ];
