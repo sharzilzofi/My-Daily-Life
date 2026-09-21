@@ -14,7 +14,7 @@ type PendingAction = { name: string; args: Record<string, any>; modelParts: Part
 type Declaration = { name: string; description: string; parameters: Record<string, any> };
 
 const apiKeyStorage = "personal-life-api-config-v1";
-const model = "gemini-2.5-flash";
+const model = "gemini-3.6-flash";
 const declarations: Declaration[] = [
   { name: "getSummary", description: "View a concise overview of the user's stored data for a date. Never changes data.", parameters: { type: "OBJECT", properties: { date: { type: "STRING", description: "Date in YYYY-MM-DD format" } } } },
   { name: "searchRecords", description: "Search existing stored records by name, type, section, or date. Never changes data.", parameters: { type: "OBJECT", properties: { query: { type: "STRING" } }, required: ["query"] } },
