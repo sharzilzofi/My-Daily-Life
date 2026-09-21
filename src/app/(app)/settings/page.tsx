@@ -76,7 +76,7 @@ function ApiIntegrations({ api, setApi, emit }: { api: ApiConfig; setApi: (value
 
   const saveApi = (next: ApiConfig) => {
     setApi(next);
-    localStorage.setItem(API_KEY, JSON.stringify(next));
+    writeActiveUserStorage(API_KEY, next);
     emit();
   };
   const testGemini = async () => {
